@@ -1,5 +1,6 @@
-import { Plus, Trash2, Wifi, X } from "lucide-react";
+import { CalendarClock, Plus, Trash2, Wifi, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ConfirmDialog } from "../../components/shared/ConfirmDialog.jsx";
 import {
   CALENDAR_HOURS,
   CALENDAR_START_HOUR,
@@ -11,6 +12,7 @@ import {
   startOfWeek,
   tasksToWeekEvents
 } from "../../lib/calendar.js";
+import { localDateTimeToIso, toInputDate, toInputTime } from "../../lib/mappers.js";
 
 function EventModal({ draft, onChange, onSave, onDelete, onClose, projectColor }) {
   if (!draft) return null;
@@ -65,20 +67,6 @@ function EventModal({ draft, onChange, onSave, onDelete, onClose, projectColor }
           </label>
         </div>
 
-        <label className="mb-4 flex flex-col gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#6E7681" }}>Duration (hours)</span>
-          <select
-            value={draft.duration}
-            onChange={(event) => onChange({ ...draft, duration: Number(event.target.value) })}
-            className="h-9 cursor-pointer rounded-md border border-white/10 bg-[#0D1117] px-2 text-xs outline-none focus:border-[#3B82F6]"
-            style={{ color: "#E6EDF3" }}
-          >
-            {[0.5, 1, 1.5, 2, 3, 4].map((value) => (
-              <option key={value} value={value}>{value}h</option>
-            ))}
-          </select>
-        </label>
-
         <div className="flex gap-2">
           <button
             type="button"
@@ -109,7 +97,7 @@ function toDraftFromSlot(weekStart, dayIndex, hour) {
   return {
     taskId: null,
     title: "",
-    date: date.toISOString().slice(0, 10),
+    date: toInputDate(date),
     time: `${String(hour).padStart(2, "0")}:00`,
     duration: 1,
     dayIndex,
@@ -122,8 +110,8 @@ function toDraftFromEvent(event) {
   return {
     taskId: event.taskId,
     title: event.title,
-    date: due.toISOString().slice(0, 10),
-    time: `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`,
+    date: toInputDate(due),
+    time: toInputTime(due),
     duration: event.duration,
     dayIndex: event.dayIndex,
     hour: event.hour
@@ -131,14 +119,13 @@ function toDraftFromEvent(event) {
 }
 
 function draftToDueDate(draft) {
-  const [year, month, day] = draft.date.split("-").map(Number);
-  const [hours, minutes] = draft.time.split(":").map(Number);
-  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
+  return localDateTimeToIso(draft.date, draft.time);
 }
 
 export function CalendarView({ project, tasks, createTask, updateTask, deleteTask, connectCalendar }) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [draft, setDraft] = useState(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
   const events = useMemo(() => tasksToWeekEvents(tasks, weekStart, project.color), [tasks, weekStart, project.color]);
@@ -165,18 +152,29 @@ export function CalendarView({ project, tasks, createTask, updateTask, deleteTas
 
   const removeDraft = async () => {
     if (!draft?.taskId) return;
-    if (!window.confirm("Delete this calendar event? The task will be removed from the board.")) return;
     await deleteTask(draft.taskId);
+    setDeletePending(false);
     setDraft(null);
   };
 
-  const eventTop = (hour, minute = 0) => 40 + (hour - CALENDAR_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
+  const eventTop = (hour, minute = 0) => (hour - CALENDAR_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold" style={{ color: "#E6EDF3" }}>{formatWeekRange(weekStart)}</h2>
+          <div
+            className="grid h-9 w-9 place-items-center rounded-lg"
+            style={{ background: `${project.color}18`, color: project.color, border: `1px solid ${project.color}35` }}
+          >
+            <CalendarClock size={16} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold" style={{ color: "#E6EDF3" }}>{formatWeekRange(weekStart)}</h2>
+            <p className="text-[11px]" style={{ color: "#6E7681" }}>
+              {events.length} scheduled task{events.length === 1 ? "" : "s"}
+            </p>
+          </div>
           <div className="flex gap-1">
             <button
               type="button"
@@ -284,12 +282,15 @@ export function CalendarView({ project, tasks, createTask, updateTask, deleteTas
                     key={event.id}
                     type="button"
                     onClick={() => openEvent(event)}
-                    className="absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded px-1.5 py-1.5 text-left transition-opacity hover:opacity-90"
+                    className="absolute cursor-pointer overflow-hidden rounded px-1.5 py-1.5 text-left transition-all hover:brightness-110"
                     style={{
                       top: eventTop(event.hour, event.minute),
+                      left: `calc(${(event.lane / event.laneCount) * 100}% + 2px)`,
+                      width: `calc(${100 / event.laneCount}% - 4px)`,
                       height: event.duration * HOUR_HEIGHT - 3,
                       background: `${event.color}20`,
-                      borderLeft: `2px solid ${event.color}`,
+                      border: `1px solid ${event.color}45`,
+                      borderLeft: `3px solid ${event.color}`,
                       color: event.color
                     }}
                   >
@@ -309,9 +310,17 @@ export function CalendarView({ project, tasks, createTask, updateTask, deleteTas
         draft={draft}
         onChange={setDraft}
         onSave={saveDraft}
-        onDelete={removeDraft}
+        onDelete={() => setDeletePending(true)}
         onClose={() => setDraft(null)}
         projectColor={project.color}
+      />
+      <ConfirmDialog
+        open={deletePending}
+        title="Delete calendar task?"
+        message="This removes the task from the board as well as the calendar."
+        confirmLabel="Delete task"
+        onCancel={() => setDeletePending(false)}
+        onConfirm={removeDraft}
       />
     </div>
   );

@@ -7,7 +7,7 @@ export const EMPTY_PROJECT = {
   taskCount: 1,
   completedTasks: 0,
   pomodoroSessions: 0,
-  lastActive: "—",
+  lastActive: "-",
   raw: null
 };
 
@@ -35,14 +35,35 @@ export function displayDate(value) {
   if (!value) return "No date";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0;
+  const dateText = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (!hasTime) return dateText;
+  return `${dateText} ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export function toInputDate(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+export function toInputTime(value, fallback = "09:00") {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+export function localDateTimeToIso(dateValue, timeValue = "09:00") {
+  if (!dateValue) return "";
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hours = 9, minutes = 0] = (timeValue || "09:00").split(":").map(Number);
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
 }
 
 export function initials(value = "") {

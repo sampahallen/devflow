@@ -3,13 +3,18 @@ import {
   DragOverlay,
   PointerSensor,
   closestCorners,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors
 } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, FileCode, Github, Plus, Timer, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Edit3, FileCode, Github, Plus, Timer, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useUiStore } from "../../app/store/uiStore.js";
 import { columns } from "../../constants/app.js";
@@ -19,7 +24,18 @@ import { PriorityDropdown } from "../../components/ui/PriorityDropdown.jsx";
 import { initials } from "../../lib/mappers.js";
 import { sortTasks } from "../../lib/taskSort.js";
 
-function KanbanCardContent({ task, editing, title, setTitle, saveTitle, setEditing, updateTask, deleteTask, showDelete }) {
+function KanbanCardContent({
+  task,
+  editing,
+  title,
+  setTitle,
+  saveTitle,
+  setEditing,
+  updateTask,
+  onEditTask,
+  onRequestDelete,
+  showActions
+}) {
   return (
     <>
       {editing ? (
@@ -38,9 +54,8 @@ function KanbanCardContent({ task, editing, title, setTitle, saveTitle, setEditi
         />
       ) : (
         <p
-          className="mb-2.5 cursor-text text-[11px] font-medium leading-snug"
+          className="mb-2.5 text-[11px] font-medium leading-snug"
           style={{ color: "#E6EDF3", lineHeight: 1.45 }}
-          onDoubleClick={() => setEditing(true)}
           onPointerDown={(event) => event.stopPropagation()}
         >
           {task.title}
@@ -85,14 +100,31 @@ function KanbanCardContent({ task, editing, title, setTitle, saveTitle, setEditi
         </div>
       </div>
 
-      {showDelete && (
-        <div className="mt-2 flex justify-end border-t border-white/5 pt-2">
+      {showActions && (
+        <div className="mt-2 flex justify-end gap-1.5 border-t border-white/5 pt-2">
           <button
             type="button"
-            onClick={() => deleteTask(task._id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEditTask(task);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="cursor-pointer rounded px-1.5 py-0.5"
+            style={{ color: "#C9D1D9", background: "rgba(255,255,255,0.06)" }}
+            title="Edit task"
+          >
+            <Edit3 size={10} />
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRequestDelete(task);
+            }}
             onPointerDown={(event) => event.stopPropagation()}
             className="cursor-pointer rounded px-1.5 py-0.5"
             style={{ color: "#EF4444", background: "rgba(239,68,68,0.1)" }}
+            title="Delete task"
           >
             <Trash2 size={10} />
           </button>
@@ -102,7 +134,7 @@ function KanbanCardContent({ task, editing, title, setTitle, saveTitle, setEditi
   );
 }
 
-function KanbanCard({ task, updateTask, deleteTask }) {
+function KanbanCard({ task, updateTask, onPreviewTask, onEditTask, onRequestDelete }) {
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
@@ -111,7 +143,14 @@ function KanbanCard({ task, updateTask, deleteTask }) {
     setTitle(task.title);
   }, [task.title]);
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task._id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: task._id });
 
   const saveTitle = () => {
     const trimmed = title.trim();
@@ -121,8 +160,10 @@ function KanbanCard({ task, updateTask, deleteTask }) {
   };
 
   const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.4 : 1
+    transform: CSS.Transform.toString(transform),
+    transition: transition || "transform 220ms cubic-bezier(0.2, 0, 0, 1)",
+    opacity: isDragging ? 0.28 : 1,
+    zIndex: isDragging ? 10 : 1
   };
 
   return (
@@ -131,9 +172,12 @@ function KanbanCard({ task, updateTask, deleteTask }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`group touch-none rounded-lg p-3 transition-all duration-150 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+      className={`group touch-none rounded-lg p-3 will-change-transform ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => {
+        if (!isDragging && !editing) onPreviewTask(task);
+      }}
     >
       <div
         style={{
@@ -150,15 +194,16 @@ function KanbanCard({ task, updateTask, deleteTask }) {
           saveTitle={saveTitle}
           setEditing={setEditing}
           updateTask={updateTask}
-          deleteTask={deleteTask}
-          showDelete={hovered}
+          onEditTask={onEditTask}
+          onRequestDelete={onRequestDelete}
+          showActions={hovered}
         />
       </div>
     </div>
   );
 }
 
-function KanbanColumn({ column, tasks, onAddTask, updateTask, deleteTask }) {
+function KanbanColumn({ column, tasks, onAddTask, updateTask, onPreviewTask, onEditTask, onRequestDelete }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
@@ -199,9 +244,18 @@ function KanbanColumn({ column, tasks, onAddTask, updateTask, deleteTask }) {
         >
           <Plus size={11} /> Add task
         </button>
-        {tasks.map((task) => (
-          <KanbanCard key={task._id} task={task} updateTask={updateTask} deleteTask={deleteTask} />
-        ))}
+        <SortableContext items={tasks.map((task) => task._id)} strategy={verticalListSortingStrategy}>
+          {tasks.map((task) => (
+            <KanbanCard
+              key={task._id}
+              task={task}
+              updateTask={updateTask}
+              onPreviewTask={onPreviewTask}
+              onEditTask={onEditTask}
+              onRequestDelete={onRequestDelete}
+            />
+          ))}
+        </SortableContext>
       </div>
     </div>
   );
@@ -218,6 +272,7 @@ function SortBar({ sort, onChange }) {
         style={{ background: "#161B22", border: "1px solid rgba(255,255,255,0.08)" }}
       >
         {[
+          { field: "position", label: "Manual" },
           { field: "priority", label: "Priority" },
           { field: "createdAt", label: "Date added" }
         ].map(({ field, label }) => (
@@ -246,7 +301,17 @@ function SortBar({ sort, onChange }) {
   );
 }
 
-export function KanbanView({ project, tasks, createTask, updateTask, deleteTask }) {
+const POSITION_STEP = 1024;
+
+function applyPositions(columnTasks, status) {
+  return columnTasks.map((task, index) => ({
+    ...task,
+    status,
+    position: (index + 1) * POSITION_STEP
+  }));
+}
+
+export function KanbanView({ project, tasks, onAddTask, updateTask, reorderTasks, onPreviewTask, onEditTask, onRequestDelete }) {
   const [activeTask, setActiveTask] = useState(null);
   const kanbanSort = useUiStore((state) => state.kanbanSort);
   const setKanbanSort = useUiStore((state) => state.setKanbanSort);
@@ -254,12 +319,8 @@ export function KanbanView({ project, tasks, createTask, updateTask, deleteTask 
   const sortedTasks = useMemo(() => sortTasks(tasks, kanbanSort), [tasks, kanbanSort]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
-
-  const addTask = (status) => {
-    createTask({ title: "New task", priority: "medium", status, projectId: project.id });
-  };
 
   const resolveStatus = (overId) => {
     const column = columns.find((col) => col.id === overId);
@@ -273,9 +334,41 @@ export function KanbanView({ project, tasks, createTask, updateTask, deleteTask 
     if (!over) return;
     const newStatus = resolveStatus(over.id);
     const task = tasks.find((item) => item._id === active.id);
-    if (task && newStatus && task.status !== newStatus) {
-      updateTask(task._id, { status: newStatus });
+    if (!task || !newStatus) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const sourceStatus = task.status;
+    const sourceColumn = sortedTasks.filter((item) => item.status === sourceStatus);
+    const targetColumn = sortedTasks.filter((item) => item.status === newStatus);
+    let updates = [];
+
+    if (sourceStatus === newStatus) {
+      const oldIndex = sourceColumn.findIndex((item) => item._id === activeId);
+      const newIndex = sourceColumn.findIndex((item) => item._id === overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+      updates = applyPositions(arrayMove(sourceColumn, oldIndex, newIndex), newStatus);
+    } else {
+      const sourceWithoutActive = sourceColumn.filter((item) => item._id !== activeId);
+      const targetWithoutActive = targetColumn.filter((item) => item._id !== activeId);
+      const overIndex = targetWithoutActive.findIndex((item) => item._id === overId);
+      const insertIndex = overIndex >= 0 ? overIndex : targetWithoutActive.length;
+      const targetWithActive = [
+        ...targetWithoutActive.slice(0, insertIndex),
+        { ...task, status: newStatus },
+        ...targetWithoutActive.slice(insertIndex)
+      ];
+      updates = [
+        ...applyPositions(sourceWithoutActive, sourceStatus),
+        ...applyPositions(targetWithActive, newStatus)
+      ];
     }
+
+    reorderTasks(updates);
+    setKanbanSort({ field: "position", direction: "asc" });
+    updates.forEach((item) => {
+      updateTask(item._id, { status: item.status, position: item.position });
+    });
   };
 
   return (
@@ -294,9 +387,11 @@ export function KanbanView({ project, tasks, createTask, updateTask, deleteTask 
               key={column.id}
               column={column}
               tasks={sortedTasks.filter((task) => task.status === column.id)}
-              onAddTask={() => addTask(column.id)}
+              onAddTask={() => onAddTask(column.id)}
               updateTask={updateTask}
-              deleteTask={deleteTask}
+              onPreviewTask={onPreviewTask}
+              onEditTask={onEditTask}
+              onRequestDelete={onRequestDelete}
             />
           ))}
         </div>
@@ -315,8 +410,9 @@ export function KanbanView({ project, tasks, createTask, updateTask, deleteTask 
                 saveTitle={() => {}}
                 setEditing={() => {}}
                 updateTask={() => {}}
-                deleteTask={() => {}}
-                showDelete={false}
+                onEditTask={() => {}}
+                onRequestDelete={() => {}}
+                showActions={false}
               />
             </div>
           ) : null}

@@ -16,16 +16,24 @@ import { views } from "../constants/app.js";
 import { asTemplateProject } from "../lib/mappers.js";
 import { api, unwrap } from "../services/api.js";
 import { CalendarView } from "../modules/calendar/CalendarView.jsx";
+import { ConfirmDialog } from "../components/shared/ConfirmDialog.jsx";
 import { DashboardView } from "../modules/dashboard/DashboardView.jsx";
 import { KanbanView } from "../modules/kanban/KanbanView.jsx";
+import { NewTaskDialog } from "../modules/kanban/NewTaskDialog.jsx";
+import { TaskPreviewDialog } from "../modules/kanban/TaskPreviewDialog.jsx";
 import { LinksView } from "../modules/links/LinksView.jsx";
 import { NotesView } from "../modules/notes/NotesView.jsx";
+import { PomodoroMiniTimer } from "../modules/pomodoro/PomodoroMiniTimer.jsx";
+import { PomodoroView } from "../modules/pomodoro/PomodoroView.jsx";
 import { PromptsView } from "../modules/prompts/PromptsView.jsx";
 import { SettingsView } from "../modules/settings/SettingsView.jsx";
 
 export function DevFlowApp() {
   const [view, setView] = useState("dashboard");
   const [dashboard, setDashboard] = useState({});
+  const [taskDialog, setTaskDialog] = useState({ open: false, status: "todo", task: null });
+  const [previewTaskId, setPreviewTaskId] = useState("");
+  const [deleteTaskId, setDeleteTaskId] = useState("");
   const {
     projects,
     currentProjectId,
@@ -89,7 +97,29 @@ export function DevFlowApp() {
   const newTask = () => {
     if (!hasProject) return;
     setView("kanban");
-    taskStore.create({ title: "New task", priority: "medium", status: "todo", projectId: project.id });
+    setTaskDialog({ open: true, status: "todo", task: null });
+  };
+
+  const openTaskDialog = (status = "todo") => {
+    if (!hasProject) return;
+    setTaskDialog({ open: true, status, task: null });
+  };
+
+  const openTaskEditor = (task) => {
+    setPreviewTaskId("");
+    setTaskDialog({ open: true, status: task.status || "todo", task });
+  };
+
+  const closeTaskDialog = () => setTaskDialog((current) => ({ ...current, open: false, task: null }));
+
+  const previewTask = taskStore.items.find((task) => task._id === previewTaskId) || null;
+  const deleteTask = taskStore.items.find((task) => task._id === deleteTaskId) || null;
+
+  const confirmDeleteTask = async () => {
+    if (!deleteTaskId) return;
+    await taskStore.remove(deleteTaskId);
+    setDeleteTaskId("");
+    if (previewTaskId === deleteTaskId) setPreviewTaskId("");
   };
 
   const handleProjectChange = (projectId) => {
@@ -162,9 +192,12 @@ export function DevFlowApp() {
                     <KanbanView
                       project={project}
                       tasks={taskStore.items}
-                      createTask={taskStore.create}
+                      onAddTask={openTaskDialog}
                       updateTask={taskStore.update}
-                      deleteTask={taskStore.remove}
+                      reorderTasks={taskStore.mergeItems}
+                      onPreviewTask={(task) => setPreviewTaskId(task._id)}
+                      onEditTask={openTaskEditor}
+                      onRequestDelete={(task) => setDeleteTaskId(task._id)}
                     />
                   )}
                   {view === "prompts" && (
@@ -210,6 +243,12 @@ export function DevFlowApp() {
                     }}
                   />
                 )}
+                  {view === "pomodoro" && (
+                    <PomodoroView
+                      project={project}
+                      tasks={taskStore.items}
+                    />
+                  )}
                   {view === "settings" && (
                     <SettingsView
                       project={project}
@@ -225,6 +264,44 @@ export function DevFlowApp() {
       </div>
 
       {hasProject && <CommandPalette />}
+      {hasProject && (
+        <PomodoroMiniTimer
+          project={project}
+          tasks={taskStore.items}
+          onOpen={() => setView("pomodoro")}
+        />
+      )}
+      {hasProject && (
+        <NewTaskDialog
+          open={taskDialog.open}
+          project={project}
+          defaultStatus={taskDialog.status}
+          task={taskDialog.task}
+          tasks={taskStore.items}
+          onClose={closeTaskDialog}
+          onCreate={taskStore.create}
+          onUpdate={taskStore.update}
+        />
+      )}
+      {hasProject && (
+        <TaskPreviewDialog
+          open={Boolean(previewTask)}
+          task={previewTask}
+          onClose={() => setPreviewTaskId("")}
+          onEdit={() => previewTask && openTaskEditor(previewTask)}
+          onDelete={() => previewTask && setDeleteTaskId(previewTask._id)}
+        />
+      )}
+      {hasProject && (
+        <ConfirmDialog
+          open={Boolean(deleteTask)}
+          title="Delete task?"
+          message={deleteTask ? `Delete "${deleteTask.title}"? This cannot be undone.` : "Delete this task?"}
+          confirmLabel="Delete task"
+          onCancel={() => setDeleteTaskId("")}
+          onConfirm={confirmDeleteTask}
+        />
+      )}
       <style>{`
         * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
         *::-webkit-scrollbar { width: 4px; height: 4px; }

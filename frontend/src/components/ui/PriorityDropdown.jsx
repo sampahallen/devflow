@@ -20,7 +20,12 @@ export function PriorityDropdown({ priority = "medium", onChange }) {
   }, []);
 
   return (
-    <div ref={ref} className="relative" onPointerDown={(event) => event.stopPropagation()}>
+    <div
+      ref={ref}
+      className="relative"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

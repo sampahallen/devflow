@@ -7,6 +7,10 @@ export function createEntityStore(endpoint) {
     loading: false,
     error: "",
     query: "",
+    mergeItems(updates) {
+      const byId = new Map(updates.map((item) => [item._id, item]));
+      set({ items: get().items.map((item) => (byId.has(item._id) ? { ...item, ...byId.get(item._id) } : item)) });
+    },
     async fetch(projectId, q = "") {
       if (!projectId) {
         set({ items: [], loading: false, query: q });

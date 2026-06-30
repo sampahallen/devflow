@@ -13,6 +13,7 @@ const taskSchema = new mongoose.Schema(
     markdownFiles: [{ type: String }],
     completedPomodoros: { type: Number, default: 0 },
     targetPomodoros: { type: Number, default: 0 },
+    position: { type: Number, default: 0 },
     calendarEventId: { type: String, default: "" },
     projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", required: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }

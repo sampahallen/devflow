@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Link2,
   Settings,
+  Timer,
   Zap
 } from "lucide-react";
 
@@ -14,6 +15,7 @@ export const views = {
   prompts: "Prompts",
   notes: "Notes",
   links: "Links",
+  pomodoro: "Pomodoro",
   calendar: "Calendar",
   settings: "Settings"
 };
@@ -24,6 +26,7 @@ export const navItems = [
   { id: "prompts", Icon: Zap, label: "Prompts" },
   { id: "notes", Icon: FileText, label: "Notes" },
   { id: "links", Icon: Link2, label: "Links" },
+  { id: "pomodoro", Icon: Timer, label: "Pomodoro" },
   { id: "calendar", Icon: Calendar, label: "Calendar" },
   { id: "settings", Icon: Settings, label: "Settings" }
 ];
